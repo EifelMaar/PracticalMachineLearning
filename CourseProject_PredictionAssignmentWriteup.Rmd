@@ -1,0 +1,96 @@
+---
+title: 'Coursera Project Practical Machine Learning: Prediction Assignment Writeup'
+author: "Thorsten"
+date: '2020-01-09'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+<!-- Check for dependencies -->
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+require(caret)
+require(randomForest)
+require(lattice)
+require(ggplot2)
+require(datasets)
+require(dplyr)
+require(doParallel)
+```
+
+### Overview
+The goal of the project is to predict the manner in which they did the exercise.
+Following data will be available:
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+Applying the machine learning algorithm to the 20 test cases available in the test data for checking the model.
+
+#### Loading data
+```{r cache=TRUE}
+trainset <- read.csv("pml-training.csv")
+```
+
+#### Cleaning data
+```{r cache=TRUE}
+trainset <- trainset[ , colSums(is.na(trainset)) == 0] # selecting only columns that do not have NAs
+trainset <- trainset[ , -nearZeroVar(trainset)] # removing columns with near zero variance
+trainset <- trainset[ , -c(1:6)] # removing variables for row number, username, timestamp, numwindow
+```
+
+#### Devide trainset into train/test for Prediction
+
+```{r cache=TRUE}
+partition <- createDataPartition(y=trainset$classe, p=0.8, list=FALSE)
+trainset.Train <- trainset[partition,]
+trainset.Test <- trainset[-partition,]
+```
+
+### Prediction
+
+##### Parallel Processing
+```{r}
+cl <- makePSOCKcluster(3)  # use three cores
+registerDoParallel(cl)  # do not forget to deregister via stopCluster(cl)
+```
+
+```{r}
+theControl <- trainControl(method = "repeatedcv", number = 4, repeats = 2, allowParallel = TRUE, verboseIter = TRUE) #cross-validation, 4 folds, 3repeats
+
+```
+#### Random Forest
+
+```{r message = FALSE}
+theModel <- train(classe ~ ., data = trainset.Train, method = "rf", trControl = theControl)
+plot(theModel)
+```
+
+##### Stop Parallel Processing
+```{r}
+stopCluster(cl)
+```
+
+```{r}
+thePredict <- predict(theModel, trainset.Test)
+theConfMat <- confusionMatrix(thePredict, trainset.Test$classe)
+theConfMat
+
+plot(theConfMat$table, col = theConfMat$byClass, main = paste("RF - Overall Accuracy = ", round(theConfMat$overall['Accuracy']*100, 2), "%", sep=""))
+
+```
+
+### Prediction on test dataset
+
+```{r}
+testset <- read.csv("pml-testing.csv")
+testset <- testset[ , colSums(is.na(testset)) == 0]
+testset <- testset[ , -nearZeroVar(testset)]
+
+thePredictResult <- predict(theModel, testset)
+thePredictResult
+```
